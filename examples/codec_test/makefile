@@ -1,4 +1,4 @@
-CXX = g++
+CXX = g++ -std=c++11
 C99 = gcc -std=c99
 LINK = g++
 AR = ar
