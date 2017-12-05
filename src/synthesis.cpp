@@ -364,13 +364,13 @@ void k_th_thread(int *pulse_locations_index, int number_of_pulses, double *pulse
                     impulse_response);
 
             int index = 0;
-            g_mutex.lock();
             for (int j = 0; j < fft_size; ++j) {
                 index = j + pulse_locations_index[i] - fft_size / 2 + 1;
                 if (index < 0 || index > y_length - 1) continue;
+                g_mutex.lock();
                 y[index] += impulse_response[j];
+                g_mutex.unlock();
             }
-            g_mutex.unlock();
         }
     }
 
@@ -401,13 +401,52 @@ void Synthesis(const double *f0, int f0_length,
 
     frame_period /= 1000.0;
 
-    std::thread threads[num_thread];
-    for (int k=0; k<num_thread; k++)
+    if (num_thread>0)
     {
-        threads[k]= std::thread(k_th_thread,pulse_locations_index,number_of_pulses, pulse_locations, pulse_locations_time_shift, interpolated_vuv,f0_length,spectrogram,aperiodicity,fft_size, frame_period, fs, y_length, y, k, num_thread, dc_remover); 
+        std::thread threads[num_thread];
+        for (int k=0; k<num_thread; k++)
+        {
+            threads[k]= std::thread(k_th_thread,pulse_locations_index,number_of_pulses, pulse_locations, pulse_locations_time_shift, interpolated_vuv,f0_length,spectrogram,aperiodicity,fft_size, frame_period, fs, y_length, y, k, num_thread, dc_remover); 
+        }
+        for (int k=0; k<num_thread; k++)
+            threads[k].join();
     }
-    for (int i=0; i<num_thread; i++)
-        threads[i].join();
+    else
+    {
+
+        double *impulse_response = new double[fft_size];
+        MinimumPhaseAnalysis minimum_phase = {0};
+        InitializeMinimumPhaseAnalysis(fft_size, &minimum_phase);
+        InverseRealFFT inverse_real_fft = {0};
+        InitializeInverseRealFFT(fft_size, &inverse_real_fft);
+        ForwardRealFFT forward_real_fft = {0};
+        InitializeForwardRealFFT(fft_size, &forward_real_fft);
+        int noise_size;
+
+        for (int i = 0; i < number_of_pulses; ++i) {
+           noise_size = pulse_locations_index[MyMinInt(number_of_pulses - 1, i + 1)] -
+                pulse_locations_index[i];
+
+            GetOneFrameSegment(interpolated_vuv[pulse_locations_index[i]], noise_size,
+                    spectrogram, fft_size, aperiodicity, f0_length, frame_period,
+                    pulse_locations[i], pulse_locations_time_shift[i], fs,
+                    &forward_real_fft, &inverse_real_fft, &minimum_phase, dc_remover,
+                    impulse_response);
+
+            int index = 0;
+            for (int j = 0; j < fft_size; ++j) {
+                index = j + pulse_locations_index[i] - fft_size / 2 + 1;
+                if (index < 0 || index > y_length - 1) continue;
+                y[index] += impulse_response[j];
+            }
+        }
+
+        DestroyMinimumPhaseAnalysis(&minimum_phase);
+        DestroyInverseRealFFT(&inverse_real_fft);
+        DestroyForwardRealFFT(&forward_real_fft);
+
+        delete[] impulse_response;
+    }//else
 
     delete[] dc_remover;
     delete[] pulse_locations;
