@@ -364,13 +364,13 @@ void k_th_thread(int *pulse_locations_index, int number_of_pulses, double *pulse
                     impulse_response);
 
             int index = 0;
+            g_mutex.lock();
             for (int j = 0; j < fft_size; ++j) {
                 index = j + pulse_locations_index[i] - fft_size / 2 + 1;
                 if (index < 0 || index > y_length - 1) continue;
-                g_mutex.lock();
                 y[index] += impulse_response[j];
-                g_mutex.unlock();
             }
+            g_mutex.unlock();
         }
     }
 
@@ -401,7 +401,7 @@ void Synthesis(const double *f0, int f0_length,
 
     frame_period /= 1000.0;
 
-    if (num_thread>0)
+    if (num_thread>1)
     {
         std::thread threads[num_thread];
         for (int k=0; k<num_thread; k++)
