@@ -340,9 +340,8 @@ static void GetDCRemover(int fft_size, double *dc_remover) {
 
 }  // namespace
 
-void k_th_thread(int *pulse_locations_index, int number_of_pulses, double *pulse_locations, double *pulse_locations_time_shift, double *interpolated_vuv, int f0_length, const double * const *spectrogram, const double * const *aperiodicity, int fft_size, double frame_period, int fs, int y_length, double *y, int k, int num_thread, double *dc_remover) {
+void k_th_thread(int *pulse_locations_index, int number_of_pulses, double *pulse_locations, double *pulse_locations_time_shift, double *interpolated_vuv, int f0_length, const double * const *spectrogram, const double * const *aperiodicity, int fft_size, double frame_period, int fs, int y_length, double *y, int k, int num_thread, double *dc_remover, double * impulse_response) {
 
-    double *impulse_response = new double[fft_size];
     MinimumPhaseAnalysis minimum_phase = {0};
     InitializeMinimumPhaseAnalysis(fft_size, &minimum_phase);
     InverseRealFFT inverse_real_fft = {0};
@@ -361,16 +360,8 @@ void k_th_thread(int *pulse_locations_index, int number_of_pulses, double *pulse
                     spectrogram, fft_size, aperiodicity, f0_length, frame_period,
                     pulse_locations[i], pulse_locations_time_shift[i], fs,
                     &forward_real_fft, &inverse_real_fft, &minimum_phase, dc_remover,
-                    impulse_response);
+                    impulse_response+i*fft_size);
 
-            int index = 0;
-            g_mutex.lock();
-            for (int j = 0; j < fft_size; ++j) {
-                index = j + pulse_locations_index[i] - fft_size / 2 + 1;
-                if (index < 0 || index > y_length - 1) continue;
-                y[index] += impulse_response[j];
-            }
-            g_mutex.unlock();
         }
     }
 
@@ -378,7 +369,6 @@ void k_th_thread(int *pulse_locations_index, int number_of_pulses, double *pulse
     DestroyInverseRealFFT(&inverse_real_fft);
     DestroyForwardRealFFT(&forward_real_fft);
 
-    delete[] impulse_response;
 }
 
 void Synthesis(const double *f0, int f0_length,
@@ -403,13 +393,25 @@ void Synthesis(const double *f0, int f0_length,
 
     if (num_thread>1)
     {
+        double *impulse_response = new double[fft_size*number_of_pulses];
         std::thread threads[num_thread];
         for (int k=0; k<num_thread; k++)
         {
-            threads[k]= std::thread(k_th_thread,pulse_locations_index,number_of_pulses, pulse_locations, pulse_locations_time_shift, interpolated_vuv,f0_length,spectrogram,aperiodicity,fft_size, frame_period, fs, y_length, y, k, num_thread, dc_remover); 
+            threads[k]= std::thread(k_th_thread,pulse_locations_index,number_of_pulses, pulse_locations, pulse_locations_time_shift, interpolated_vuv,f0_length,spectrogram,aperiodicity,fft_size, frame_period, fs, y_length, y, k, num_thread, dc_remover,impulse_response); 
         }
         for (int k=0; k<num_thread; k++)
             threads[k].join();
+
+        for (int i = 0; i < number_of_pulses; ++i) {
+
+            int index = 0;
+            for (int j = 0; j < fft_size; ++j) {
+                index = j + pulse_locations_index[i] - fft_size / 2 + 1;
+                if (index < 0 || index > y_length - 1) continue;
+                y[index] += impulse_response[i*fft_size+j];
+            }
+        }
+        delete[] impulse_response;
     }
     else
     {
