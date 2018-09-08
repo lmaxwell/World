@@ -15,6 +15,7 @@
 #include "world/matlabfunctions.h"
 #include <thread>
 #include <mutex>
+#include "fmath.h"
 
 static std::mutex g_mutex;
 
@@ -50,10 +51,10 @@ static void GetAperiodicResponse(int noise_size, int fft_size,
   if (current_vuv != 0.0)
     for (int i = 0; i <= minimum_phase->fft_size / 2; ++i)
       minimum_phase->log_spectrum[i] =
-        log(spectrum[i] * aperiodic_ratio[i]) / 2.0;
+        fmath::log(spectrum[i] * aperiodic_ratio[i]) / 2.0;
   else
     for (int i = 0; i <= minimum_phase->fft_size / 2; ++i)
-      minimum_phase->log_spectrum[i] = log(spectrum[i]) / 2.0;
+      minimum_phase->log_spectrum[i] = fmath::log(spectrum[i]) / 2.0;
   GetMinimumPhaseSpectrum(minimum_phase);
 
   for (int i = 0; i <= fft_size / 2; ++i) {
@@ -119,7 +120,7 @@ static void GetPeriodicResponse(int fft_size, const double *spectrum,
 
   for (int i = 0; i <= minimum_phase->fft_size / 2; ++i)
     minimum_phase->log_spectrum[i] =
-      log(spectrum[i] * (1.0 - aperiodic_ratio[i]) +
+      fmath::log(spectrum[i] * (1.0 - aperiodic_ratio[i]) +
       world::kMySafeGuardMinimum) / 2.0;
   GetMinimumPhaseSpectrum(minimum_phase);
 
